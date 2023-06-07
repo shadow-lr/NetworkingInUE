@@ -6,7 +6,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'NetWorkingInUE'
+project = 'NetworkingInUE'
 copyright = '2023, runrli'
 author = 'runrli'
 release = '1.0'
@@ -23,6 +23,8 @@ language = 'zh_CN'
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
+
 html_theme = 'sphinx_rtd_theme'
-extensions = ['recommonmark','sphinx_markdown_tables']
 html_static_path = ['_static']
+
+extensions = ['recommonmark','sphinx_markdown_tables']

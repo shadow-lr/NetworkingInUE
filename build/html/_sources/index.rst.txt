@@ -1,9 +1,9 @@
-.. NetWorkingInUE documentation master file, created by
-   sphinx-quickstart on Wed Jun  7 14:31:06 2023.
+.. NetworkingInUE documentation master file, created by
+   sphinx-quickstart on Wed Jun  7 15:40:05 2023.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to NetWorkingInUE's documentation!
+Welcome to NetworkingInUE's documentation!
 ==========================================
 
 .. toctree::
