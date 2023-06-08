@@ -4,7 +4,7 @@
   <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>1. UE5 网络通信概念介绍 &mdash; NetworkingInUE 1.0 文档</title>
+  <title>4. UE5 内部网络通信的一些运用介绍 &mdash; NetworkingInUE 1.0 文档</title>
       <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
   <!--[if lt IE 9]>
@@ -18,8 +18,8 @@
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="索引" href="../../genindex.html" />
     <link rel="search" title="搜索" href="../../search.html" />
-    <link rel="next" title="2. UE5 网络通信概念介绍" href="../2.%20UE5%20%E6%9C%8D%E5%8A%A1%E5%99%A8%E7%B1%BB%E5%9E%8B/index.html" />
-    <link rel="prev" title="Welcome to NetworkingInUE’s documentation!" href="../../index.html" /> 
+    <link rel="next" title="4.1 UE5 回放系统" href="4.1%20UE5%20%E5%9B%9E%E6%94%BE%E7%B3%BB%E7%BB%9F.html" />
+    <link rel="prev" title="3.2 UE5 服务器视角参与网络通信" href="../3.%20UE5%20%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1%E6%B5%81%E7%A8%8B/3.3%20%E6%9C%8D%E5%8A%A1%E5%99%A8%E8%A7%86%E8%A7%92%E5%8F%82%E4%B8%8E%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -43,12 +43,15 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="导航菜单">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">1. UE5 网络通信概念介绍</a><ul class="simple">
-</ul>
-</li>
+<li class="toctree-l1"><a class="reference internal" href="../1.%20UE5%20%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1%E6%A6%82%E5%BF%B5%E4%BB%8B%E7%BB%8D/index.html">1. UE5 网络通信概念介绍</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../2.%20UE5%20%E6%9C%8D%E5%8A%A1%E5%99%A8%E7%B1%BB%E5%9E%8B/index.html">2. UE5 网络通信概念介绍</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../3.%20UE5%20%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1%E6%B5%81%E7%A8%8B/index.html">3. UE5 网络通信流程</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../4.%20UE5%20%E5%86%85%E9%83%A8%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1%E7%9A%84%E4%B8%80%E4%BA%9B%E8%BF%90%E7%94%A8%E4%BB%8B%E7%BB%8D/index.html">4. UE5 UE5 内部网络通信的一些运用介绍</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">4. UE5 内部网络通信的一些运用介绍</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="4.1%20UE5%20%E5%9B%9E%E6%94%BE%E7%B3%BB%E7%BB%9F.html">4.1 UE5 回放系统</a></li>
+<li class="toctree-l2"><a class="reference internal" href="4.2%20UE5%20WebSocket%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1.html">4.2 UE5 WebSocket网络通信</a></li>
+<li class="toctree-l2"><a class="reference internal" href="4.3%20UE5%20%E5%9F%BA%E4%BA%8EIP%E7%9A%84%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1.html">4.3 UE5 基于IP的网络通信</a></li>
+</ul>
+</li>
 </ul>
 
         </div>
@@ -65,9 +68,9 @@
           <div role="navigation" aria-label="页面导航">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">1. UE5 网络通信概念介绍</li>
+      <li class="breadcrumb-item active">4. UE5 内部网络通信的一些运用介绍</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../../_sources/docs/1. UE5 网络通信概念介绍/index.rst.txt" rel="nofollow"> 查看页面源码</a>
+            <a href="../../_sources/docs/4. UE5 内部网络通信的一些运用介绍/index.rst.txt" rel="nofollow"> 查看页面源码</a>
       </li>
   </ul>
   <hr/>
@@ -76,8 +79,13 @@
            <div itemprop="articleBody">
              
   <section id="ue5">
-<h1>1. UE5 网络通信概念介绍<a class="headerlink" href="#ue5" title="此标题的永久链接"></a></h1>
+<h1>4. UE5 内部网络通信的一些运用介绍<a class="headerlink" href="#ue5" title="此标题的永久链接"></a></h1>
 <div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="4.1%20UE5%20%E5%9B%9E%E6%94%BE%E7%B3%BB%E7%BB%9F.html">4.1 UE5 回放系统</a></li>
+<li class="toctree-l1"><a class="reference internal" href="4.2%20UE5%20WebSocket%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1.html">4.2 UE5 WebSocket网络通信</a></li>
+<li class="toctree-l1"><a class="reference internal" href="4.3%20UE5%20%E5%9F%BA%E4%BA%8EIP%E7%9A%84%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1.html">4.3 UE5 基于IP的网络通信</a></li>
+</ul>
 </div>
 </section>
 
@@ -85,8 +93,8 @@
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="页脚">
-        <a href="../../index.html" class="btn btn-neutral float-left" title="Welcome to NetworkingInUE’s documentation!" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
-        <a href="../2.%20UE5%20%E6%9C%8D%E5%8A%A1%E5%99%A8%E7%B1%BB%E5%9E%8B/index.html" class="btn btn-neutral float-right" title="2. UE5 网络通信概念介绍" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="../3.%20UE5%20%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1%E6%B5%81%E7%A8%8B/3.3%20%E6%9C%8D%E5%8A%A1%E5%99%A8%E8%A7%86%E8%A7%92%E5%8F%82%E4%B8%8E%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1.html" class="btn btn-neutral float-left" title="3.2 UE5 服务器视角参与网络通信" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> 上一页</a>
+        <a href="4.1%20UE5%20%E5%9B%9E%E6%94%BE%E7%B3%BB%E7%BB%9F.html" class="btn btn-neutral float-right" title="4.1 UE5 回放系统" accesskey="n" rel="next">下一页 <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
