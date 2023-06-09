@@ -1,0 +1,24 @@
+# 3.3 UE5 网络通信收包流程
+这个函数命名已经说明了它的作用。Server端监听完端口后根据此函数，接收和处理来自客户端发来的数据包。
+```cpp
+UCLASS(Abstract, customConstructor, transient, MinimalAPI, config=Engine)
+class UNetDriver : public UObject, public FExec
+{
+    //...
+    /** handle time update: read and process packets */
+    ENGINE_API virtual void TickDispatch( float DeltaTime );
+    //...
+}
+```
+其大致流程为：
+```cpp
+UIpNetDriver::TickDispatch
+    ->  UNetDriver::TickDispatch
+    ->  UNetDriver::AdvanceCurrentPacket() (for (FPacketIterator It(this); It; ++It)) // 通过迭代器去处理包 Process all incoming packets
+        RecvFrom(CurrentPacket.Data.GetData(), MAX_PACKET_SIZE, BytesRead, *CurrentPacket.Address)
+    ->  UNetDriver::ReceiveSinglePacket // 从Socket中接收单一数据包
+        -> FSocketBSD::RecvFrom
+            -> recvfrom // from WinSock2.h 操作系统层面的api
+```
+
+#### 浅析一下握手（建立连接）过程

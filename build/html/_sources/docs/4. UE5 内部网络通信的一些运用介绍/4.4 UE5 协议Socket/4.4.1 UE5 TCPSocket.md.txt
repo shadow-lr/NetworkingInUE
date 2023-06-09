@@ -1,1 +1,168 @@
 # 4.4.1 UE5 TCPSocket
+
+UE5 关于TCP通信的几个类：
+
+- TcpListener 监听来自TcpSocket消息的Runnable
+- TcpSocketBuilder 为TCP Socket实现的构建器
+
+#### 创建过程：
+```c++
+// 定一个基础的Runnable类
+class FTcpThread : public FRunnable
+{
+public:
+    void CreateTCPConnection(int32 IPPort);
+
+    // FRunnable interface.
+    virtual bool Init() override;
+
+public:
+    FSocket* TcpSocket = nullptr;
+};
+```
+```c++
+// 指定本机地址
+const FString IPv4AddressStr = TEXT("127.0.0.1");
+// 指定端口号
+const int32 IPv4IPPort = 8000;
+
+bool FTcpThread::Init()
+{
+    CreateTCPConnection(IPv4IPPort);
+    return true;
+}
+
+void FTcpThread::CreateTCPConnection(int32 IPPort)
+{
+    FIPv4Address Ipv4Address;
+    FIPv4Address::Parse(IPv4AddressStr, Ipv4Address);
+    // 根据IP地址和端口号创建端点
+    FIPv4Endpoint Endpoint(Ipv4Address, IPPort);
+
+    TcpSocket = FTcpSocketBuilder(TEXT("TestTcpSocket")).AsReusable().BoundToEndpoint(Endpoint).Listening(8);
+
+    int32 BufferSize = 1024 * 1024;
+    // 设置信息的缓冲区
+    TcpSocket->SetSendBufferSize(BufferSize, BufferSize);
+    TcpSocket->SetReceiveBufferSize(BufferSize,BufferSize);
+}
+```
+创建后相当于拥有一个线程，可以接受并处理来自我们指定的IP地址和端口的TcpSocket消息
+
+#### 接受处理来自TcpSocket的消息过程：
+```cpp
+// 重载Run函数
+class FTcpThread : public FRunnable
+{
+public:
+    virtual uint32 Run() override;
+
+    // 等待连接
+    void WaitForConnect();
+    // 发送消息
+    void SendMsg(const uint8* Data, int32 size);
+    // 接收来自Socket的信息
+    bool RecvMsg();
+
+public:
+    FSocket* ConnectSocket;
+}
+```
+
+**Run()** 函数负责每帧监听来自TcpSocket的信息，等待有其他Socket进行连接
+
+```cpp
+uint32 FTcpThread::Run()
+{
+    while (true)
+    {
+        FPlatformProcess::Sleep(0.01);
+
+        WaitForConnection();
+        if (RecvMsg())
+        {
+            // ......
+        }
+    }
+
+    return 0;
+}
+```
+Tcp有严格意义上的连接意义，我们保留一个 **ConnectionSocket** 以便我们之后处理其他方面的需求
+```cpp
+void FTcpThread::WaitForConnection()
+{
+    // 创建本地的互联网地址
+    TSharedPtr<FInternetAddr> RemoteAddress = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
+
+    // 判断Socket是否有连接的请求
+    if (TcpSocket->HasPendingConnection(Pending) && Pending)
+    {
+        if (ConnectSocket != nullptr)
+        {
+            ConnectSocket->Close();
+            ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ConnectSocket);
+        }
+
+        // 接受来自本地互联网地址的Socket
+        ConnectSocket = TcpSocket->Accept(*RemoteAddress, TEXT("TCP Received Socket Connection"));
+    }
+}
+```
+**RecvMsg()** 简单的接收信息函数
+```cpp
+bool FTcpThread::RecvMsg()
+{
+    if (ConnectSocket->GetSocketType() == ESocketType::SOCKTYPE_Unknown)
+    	return false;
+
+    if (!ConnectSocket)
+    	return false;
+	
+    TSharedRef<FInternetAddr> targetAddr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
+    TArray<uint8> ReceivedData;
+    uint32 Size;
+
+    FString message = "";
+	
+    if (ConnectSocket->HasPendingData(Size))
+    {
+    	int32 BytesRead = 0;
+    	ReceivedData.SetNumUninitialized(FMath::Min(Size, 65507u));
+    	ConnectSocket->RecvFrom(ReceivedData.GetData(), ReceivedData.Num(), BytesRead, *targetAddr); //创建远程接收地址
+        char ansiiData[1024];
+        memcpy(ansiiData, ReceivedData.GetData(), BytesRead);
+        ansiiData[BytesRead] = 0;
+		
+        // 这就是接收到的信息了
+        message = UTF8_TO_TCHAR(ansiiData);
+        return true;
+    }
+
+    return false;
+}
+```
+
+**SendMsg()** 简单的发送信息函数
+```cpp
+void FTcpThread::SendMsg(const uint8* Data, int32 size)
+{
+    if (!TcpSocket)
+    {
+        UE_LOG(LogTemp, Error, TEXT("TcpSocket is nullptr"));
+        return false;
+    }
+
+    ESocketConnectionState ConnectionState = TcpSocket->GetConnectionState();
+
+    int32 BytesSent = 0;
+    SenderSocket->SendTo(Data, size, BytesSent, *RemoteAddress);
+    if (BytesSent <= 0)
+    {
+        const FString Str = "Socket is valid but the receiver received 0 bytes, make sure it is listening properly!";
+        UE_LOG(LogTemp, Error, TEXT("%s"), *Str);
+        return false;
+    }
+    return true;
+}
+```

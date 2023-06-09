@@ -51,7 +51,11 @@
 <li class="toctree-l2"><a class="reference internal" href="../4.2%20UE5%20WebSocket%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1.html">4.2 UE5 WebSocket网络通信</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../4.3%20UE5%20%E5%9F%BA%E4%BA%8EIP%E7%9A%84%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1.html">4.3 UE5 基于IP的网络通信</a></li>
 <li class="toctree-l2 current"><a class="reference internal" href="index.html">4.4 UE5 协议Socket</a><ul class="current">
-<li class="toctree-l3 current"><a class="current reference internal" href="#">4.4.1 UE5 TCPSocket</a></li>
+<li class="toctree-l3 current"><a class="current reference internal" href="#">4.4.1 UE5 TCPSocket</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#id1">创建过程：</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#tcpsocket">接受处理来自TcpSocket的消息过程：</a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="4.4.2%20UE5%20UDPSocket.html">4.4.2 UE5 UDPSocket</a></li>
 </ul>
 </li>
@@ -87,6 +91,172 @@
              
   <section id="ue5-tcpsocket">
 <h1>4.4.1 UE5 TCPSocket<a class="headerlink" href="#ue5-tcpsocket" title="此标题的永久链接"></a></h1>
+<p>UE5 关于TCP通信的几个类：</p>
+<ul class="simple">
+<li><p>TcpListener 监听来自TcpSocket消息的Runnable</p></li>
+<li><p>TcpSocketBuilder 为TCP Socket实现的构建器</p></li>
+</ul>
+<section id="id1">
+<h2>创建过程：<a class="headerlink" href="#id1" title="此标题的永久链接"></a></h2>
+<div class="highlight-c++ notranslate"><div class="highlight"><pre><span></span><span class="c1">// 定一个基础的Runnable类</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">FTcpThread</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="k">public</span><span class="w"> </span><span class="n">FRunnable</span>
+<span class="p">{</span>
+<span class="k">public</span><span class="o">:</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="n">CreateTCPConnection</span><span class="p">(</span><span class="n">int32</span><span class="w"> </span><span class="n">IPPort</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// FRunnable interface.</span>
+<span class="w">    </span><span class="k">virtual</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="nf">Init</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
+
+<span class="k">public</span><span class="o">:</span>
+<span class="w">    </span><span class="n">FSocket</span><span class="o">*</span><span class="w"> </span><span class="n">TcpSocket</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">nullptr</span><span class="p">;</span>
+<span class="p">};</span>
+</pre></div>
+</div>
+<div class="highlight-c++ notranslate"><div class="highlight"><pre><span></span><span class="c1">// 指定本机地址</span>
+<span class="k">const</span><span class="w"> </span><span class="n">FString</span><span class="w"> </span><span class="n">IPv4AddressStr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TEXT</span><span class="p">(</span><span class="s">&quot;127.0.0.1&quot;</span><span class="p">);</span>
+<span class="c1">// 指定端口号</span>
+<span class="k">const</span><span class="w"> </span><span class="n">int32</span><span class="w"> </span><span class="n">IPv4IPPort</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8000</span><span class="p">;</span>
+
+<span class="kt">bool</span><span class="w"> </span><span class="nf">FTcpThread::Init</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">CreateTCPConnection</span><span class="p">(</span><span class="n">IPv4IPPort</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="nf">FTcpThread::CreateTCPConnection</span><span class="p">(</span><span class="n">int32</span><span class="w"> </span><span class="n">IPPort</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">FIPv4Address</span><span class="w"> </span><span class="n">Ipv4Address</span><span class="p">;</span>
+<span class="w">    </span><span class="n">FIPv4Address</span><span class="o">::</span><span class="n">Parse</span><span class="p">(</span><span class="n">IPv4AddressStr</span><span class="p">,</span><span class="w"> </span><span class="n">Ipv4Address</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">// 根据IP地址和端口号创建端点</span>
+<span class="w">    </span><span class="n">FIPv4Endpoint</span><span class="w"> </span><span class="n">Endpoint</span><span class="p">(</span><span class="n">Ipv4Address</span><span class="p">,</span><span class="w"> </span><span class="n">IPPort</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">TcpSocket</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">FTcpSocketBuilder</span><span class="p">(</span><span class="n">TEXT</span><span class="p">(</span><span class="s">&quot;TestTcpSocket&quot;</span><span class="p">)).</span><span class="n">AsReusable</span><span class="p">().</span><span class="n">BoundToEndpoint</span><span class="p">(</span><span class="n">Endpoint</span><span class="p">).</span><span class="n">Listening</span><span class="p">(</span><span class="mi">8</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">int32</span><span class="w"> </span><span class="n">BufferSize</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1024</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">1024</span><span class="p">;</span>
+<span class="w">    </span><span class="c1">// 设置信息的缓冲区</span>
+<span class="w">    </span><span class="n">TcpSocket</span><span class="o">-&gt;</span><span class="n">SetSendBufferSize</span><span class="p">(</span><span class="n">BufferSize</span><span class="p">,</span><span class="w"> </span><span class="n">BufferSize</span><span class="p">);</span>
+<span class="w">    </span><span class="n">TcpSocket</span><span class="o">-&gt;</span><span class="n">SetReceiveBufferSize</span><span class="p">(</span><span class="n">BufferSize</span><span class="p">,</span><span class="n">BufferSize</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>创建后相当于拥有一个线程，可以接受并处理来自我们指定的IP地址和端口的TcpSocket消息</p>
+</section>
+<section id="tcpsocket">
+<h2>接受处理来自TcpSocket的消息过程：<a class="headerlink" href="#tcpsocket" title="此标题的永久链接"></a></h2>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="c1">// 重载Run函数</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">FTcpThread</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="k">public</span><span class="w"> </span><span class="n">FRunnable</span>
+<span class="p">{</span>
+<span class="k">public</span><span class="o">:</span>
+<span class="w">    </span><span class="k">virtual</span><span class="w"> </span><span class="n">uint32</span><span class="w"> </span><span class="n">Run</span><span class="p">()</span><span class="w"> </span><span class="k">override</span><span class="p">;</span>
+
+<span class="w">    </span><span class="c1">// 等待连接</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">WaitForConnect</span><span class="p">();</span>
+<span class="w">    </span><span class="c1">// 发送消息</span>
+<span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="nf">SendMsg</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">uint8</span><span class="o">*</span><span class="w"> </span><span class="n">Data</span><span class="p">,</span><span class="w"> </span><span class="n">int32</span><span class="w"> </span><span class="n">size</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">// 接收来自Socket的信息</span>
+<span class="w">    </span><span class="kt">bool</span><span class="w"> </span><span class="nf">RecvMsg</span><span class="p">();</span>
+
+<span class="k">public</span><span class="o">:</span>
+<span class="w">    </span><span class="n">FSocket</span><span class="o">*</span><span class="w"> </span><span class="n">ConnectSocket</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>Run()</strong> 函数负责每帧监听来自TcpSocket的信息，等待有其他Socket进行连接</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="n">uint32</span><span class="w"> </span><span class="nf">FTcpThread::Run</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="nb">true</span><span class="p">)</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="n">FPlatformProcess</span><span class="o">::</span><span class="n">Sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">);</span>
+
+<span class="w">        </span><span class="n">WaitForConnection</span><span class="p">();</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">RecvMsg</span><span class="p">())</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">            </span><span class="c1">// ......</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Tcp有严格意义上的连接意义，我们保留一个 <strong>ConnectionSocket</strong> 以便我们之后处理其他方面的需求</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">FTcpThread::WaitForConnection</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="c1">// 创建本地的互联网地址</span>
+<span class="w">    </span><span class="n">TSharedPtr</span><span class="o">&lt;</span><span class="n">FInternetAddr</span><span class="o">&gt;</span><span class="w"> </span><span class="n">RemoteAddress</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ISocketSubsystem</span><span class="o">::</span><span class="n">Get</span><span class="p">(</span><span class="n">PLATFORM_SOCKETSUBSYSTEM</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">CreateInternetAddr</span><span class="p">();</span>
+
+<span class="w">    </span><span class="c1">// 判断Socket是否有连接的请求</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">TcpSocket</span><span class="o">-&gt;</span><span class="n">HasPendingConnection</span><span class="p">(</span><span class="n">Pending</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">Pending</span><span class="p">)</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ConnectSocket</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="k">nullptr</span><span class="p">)</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">            </span><span class="n">ConnectSocket</span><span class="o">-&gt;</span><span class="n">Close</span><span class="p">();</span>
+<span class="w">            </span><span class="n">ISocketSubsystem</span><span class="o">::</span><span class="n">Get</span><span class="p">(</span><span class="n">PLATFORM_SOCKETSUBSYSTEM</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">DestroySocket</span><span class="p">(</span><span class="n">ConnectSocket</span><span class="p">);</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="c1">// 接受来自本地互联网地址的Socket</span>
+<span class="w">        </span><span class="n">ConnectSocket</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TcpSocket</span><span class="o">-&gt;</span><span class="n">Accept</span><span class="p">(</span><span class="o">*</span><span class="n">RemoteAddress</span><span class="p">,</span><span class="w"> </span><span class="n">TEXT</span><span class="p">(</span><span class="s">&quot;TCP Received Socket Connection&quot;</span><span class="p">));</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>RecvMsg()</strong> 简单的接收信息函数</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">bool</span><span class="w"> </span><span class="nf">FTcpThread::RecvMsg</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ConnectSocket</span><span class="o">-&gt;</span><span class="n">GetSocketType</span><span class="p">()</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">ESocketType</span><span class="o">::</span><span class="n">SOCKTYPE_Unknown</span><span class="p">)</span>
+<span class="w">    	</span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">ConnectSocket</span><span class="p">)</span>
+<span class="w">    	</span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<span class="w">	</span>
+<span class="w">    </span><span class="n">TSharedRef</span><span class="o">&lt;</span><span class="n">FInternetAddr</span><span class="o">&gt;</span><span class="w"> </span><span class="n">targetAddr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ISocketSubsystem</span><span class="o">::</span><span class="n">Get</span><span class="p">(</span><span class="n">PLATFORM_SOCKETSUBSYSTEM</span><span class="p">)</span><span class="o">-&gt;</span><span class="n">CreateInternetAddr</span><span class="p">();</span>
+<span class="w">    </span><span class="n">TArray</span><span class="o">&lt;</span><span class="n">uint8</span><span class="o">&gt;</span><span class="w"> </span><span class="n">ReceivedData</span><span class="p">;</span>
+<span class="w">    </span><span class="n">uint32</span><span class="w"> </span><span class="n">Size</span><span class="p">;</span>
+
+<span class="w">    </span><span class="n">FString</span><span class="w"> </span><span class="n">message</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="p">;</span>
+<span class="w">	</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">ConnectSocket</span><span class="o">-&gt;</span><span class="n">HasPendingData</span><span class="p">(</span><span class="n">Size</span><span class="p">))</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">    	</span><span class="n">int32</span><span class="w"> </span><span class="n">BytesRead</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">    	</span><span class="n">ReceivedData</span><span class="p">.</span><span class="n">SetNumUninitialized</span><span class="p">(</span><span class="n">FMath</span><span class="o">::</span><span class="n">Min</span><span class="p">(</span><span class="n">Size</span><span class="p">,</span><span class="w"> </span><span class="mi">65507u</span><span class="p">));</span>
+<span class="w">    	</span><span class="n">ConnectSocket</span><span class="o">-&gt;</span><span class="n">RecvFrom</span><span class="p">(</span><span class="n">ReceivedData</span><span class="p">.</span><span class="n">GetData</span><span class="p">(),</span><span class="w"> </span><span class="n">ReceivedData</span><span class="p">.</span><span class="n">Num</span><span class="p">(),</span><span class="w"> </span><span class="n">BytesRead</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">targetAddr</span><span class="p">);</span><span class="w"> </span><span class="c1">//创建远程接收地址</span>
+<span class="w">        </span><span class="kt">char</span><span class="w"> </span><span class="n">ansiiData</span><span class="p">[</span><span class="mi">1024</span><span class="p">];</span>
+<span class="w">        </span><span class="n">memcpy</span><span class="p">(</span><span class="n">ansiiData</span><span class="p">,</span><span class="w"> </span><span class="n">ReceivedData</span><span class="p">.</span><span class="n">GetData</span><span class="p">(),</span><span class="w"> </span><span class="n">BytesRead</span><span class="p">);</span>
+<span class="w">        </span><span class="n">ansiiData</span><span class="p">[</span><span class="n">BytesRead</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">		</span>
+<span class="w">        </span><span class="c1">// 这就是接收到的信息了</span>
+<span class="w">        </span><span class="n">message</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">UTF8_TO_TCHAR</span><span class="p">(</span><span class="n">ansiiData</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><strong>SendMsg()</strong> 简单的发送信息函数</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">FTcpThread::SendMsg</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">uint8</span><span class="o">*</span><span class="w"> </span><span class="n">Data</span><span class="p">,</span><span class="w"> </span><span class="n">int32</span><span class="w"> </span><span class="n">size</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">TcpSocket</span><span class="p">)</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="n">UE_LOG</span><span class="p">(</span><span class="n">LogTemp</span><span class="p">,</span><span class="w"> </span><span class="n">Error</span><span class="p">,</span><span class="w"> </span><span class="n">TEXT</span><span class="p">(</span><span class="s">&quot;TcpSocket is nullptr&quot;</span><span class="p">));</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="n">ESocketConnectionState</span><span class="w"> </span><span class="n">ConnectionState</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TcpSocket</span><span class="o">-&gt;</span><span class="n">GetConnectionState</span><span class="p">();</span>
+
+<span class="w">    </span><span class="n">int32</span><span class="w"> </span><span class="n">BytesSent</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">    </span><span class="n">SenderSocket</span><span class="o">-&gt;</span><span class="n">SendTo</span><span class="p">(</span><span class="n">Data</span><span class="p">,</span><span class="w"> </span><span class="n">size</span><span class="p">,</span><span class="w"> </span><span class="n">BytesSent</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">RemoteAddress</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">BytesSent</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="k">const</span><span class="w"> </span><span class="n">FString</span><span class="w"> </span><span class="n">Str</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;Socket is valid but the receiver received 0 bytes, make sure it is listening properly!&quot;</span><span class="p">;</span>
+<span class="w">        </span><span class="n">UE_LOG</span><span class="p">(</span><span class="n">LogTemp</span><span class="p">,</span><span class="w"> </span><span class="n">Error</span><span class="p">,</span><span class="w"> </span><span class="n">TEXT</span><span class="p">(</span><span class="s">&quot;%s&quot;</span><span class="p">),</span><span class="w"> </span><span class="o">*</span><span class="n">Str</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
 </section>
 
 
