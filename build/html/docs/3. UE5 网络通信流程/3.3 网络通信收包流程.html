@@ -109,6 +109,23 @@
 </div>
 <section id="id1">
 <h2>浅析一下握手（建立连接）过程<a class="headerlink" href="#id1" title="此标题的永久链接"></a></h2>
+<p>如何处理客户端的连接？以服务器视角下，客户端与服务器的连接关系可能是多对一的，则势必需要一个数据结构维系与每个客户端的Connection。
+<code class="docutils literal notranslate"><span class="pre">NetDriver.h</span></code>头文件中定义了<code class="docutils literal notranslate"><span class="pre">FConnectionMap</span></code>，其用地址映射到Connection。</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="k">using</span><span class="w"> </span><span class="n">FConnectionMap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TMap</span><span class="o">&lt;</span><span class="n">TSharedRef</span><span class="o">&lt;</span><span class="k">const</span><span class="w"> </span><span class="n">FInternetAddr</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="n">UNetConnection</span><span class="o">*</span><span class="p">,</span><span class="w"> </span><span class="n">FDefaultSetAllocator</span><span class="p">,</span><span class="w"> </span><span class="n">FInternetAddrConstKeyMapFuncs</span><span class="o">&lt;</span><span class="n">UNetConnection</span><span class="o">*&gt;&gt;</span><span class="p">;</span>
+</pre></div>
+</div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>    <span class="o">/**</span>
+     <span class="o">*</span> <span class="n">Map</span> <span class="n">of</span> <span class="n">IP</span><span class="s1">&#39;s to NetConnection&#39;</span><span class="n">s</span> <span class="o">-</span> <span class="k">for</span> <span class="n">fast</span> <span class="n">lookup</span><span class="p">,</span> <span class="n">particularly</span> <span class="n">under</span> <span class="n">DDoS</span><span class="o">.</span>
+     <span class="o">*</span> <span class="n">Only</span> <span class="n">valid</span> <span class="n">IP</span><span class="s1">&#39;s mapped (e.g. excludes DemoNetConnection). Recently disconnected clients remain mapped as nullptr connections.</span>
+     <span class="o">*/</span>
+    <span class="n">FConnectionMap</span> <span class="n">MappedClientConnections</span><span class="p">;</span>
+</pre></div>
+</div>
+<p>而该存储映射关系的数据结构，重点需要关注的有以下两处更新入口。</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">UIpNetDriver::ProcessConnectionlessPacket</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">USteamSocketsNetDriver::OnConnectionCreated</span></code></p></li>
+</ul>
 </section>
 </section>
 
