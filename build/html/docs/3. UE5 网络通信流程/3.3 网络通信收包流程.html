@@ -49,7 +49,19 @@
 <li class="toctree-l2"><a class="reference internal" href="3.1%20%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1%E5%88%9D%E5%A7%8B%E5%8C%96%E6%B5%81%E7%A8%8B.html">3.1 UE5 网络通信初始化流程</a></li>
 <li class="toctree-l2"><a class="reference internal" href="3.2%20%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1%E5%8F%91%E5%8C%85%E6%B5%81%E7%A8%8B.html">3.2 UE5 网络通信发包流程</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">3.3 UE5 网络通信收包流程</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#id1">浅析一下握手（建立连接）过程</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id1">浅析一下握手（建立连接）过程</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#id2">客户端向服务器发送初始握手包</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#connectionless">服务器发送给客户端Connectionless(无连接状态)的握手包</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#connectchallenge-connectchallenge">客户端给服务器发<code class="docutils literal notranslate"><span class="pre">ConnectChallenge</span></code>的回复包。那么客户端在哪处理，如何处理来自服务器的<code class="docutils literal notranslate"><span class="pre">ConnectChallenge</span></code>包呢？</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ack">服务器接收到来自客户端的回复包，给客户端发送<code class="docutils literal notranslate"><span class="pre">Ack</span></code>包</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#id3">深入一些细节探讨</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#connection-packethandler-ipnetdriver">Connection PacketHandler IpNetDriver在连接过程中是如何参与的？</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#handshakesecret">HandshakeSecret</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#cookie">Cookie</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="3.4%20%E5%AE%A2%E6%88%B7%E7%AB%AF%E8%A7%86%E8%A7%92%E5%8F%82%E4%B8%8E%E7%BD%91%E7%BB%9C%E9%80%9A%E4%BF%A1.html">3.4 UE5 客户端视角参与网络通信</a></li>
@@ -126,6 +138,176 @@
 <li><p><code class="docutils literal notranslate"><span class="pre">UIpNetDriver::ProcessConnectionlessPacket</span></code></p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">USteamSocketsNetDriver::OnConnectionCreated</span></code></p></li>
 </ul>
+<p>以下按<strong>时间顺序</strong>列举每个过程：</p>
+<p>每个过程处理的目的和方式</p>
+<section id="id2">
+<h3>客户端向服务器发送初始握手包<a class="headerlink" href="#id2" title="此标题的永久链接"></a></h3>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="n">StatelessConnectHandlerComponent</span><span class="o">::</span><span class="n">Tick</span>
+<span class="w">    </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">StatelessConnectHandlerComponent</span><span class="o">::</span><span class="n">SendInitialPacket</span>
+<span class="w">    </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">ServerConn</span><span class="o">-&gt;</span><span class="n">LowLevelSend</span><span class="p">(</span><span class="n">InitialPacket</span><span class="p">.</span><span class="n">GetData</span><span class="p">(),</span><span class="w"> </span><span class="n">InitialPacket</span><span class="p">.</span><span class="n">GetNumBits</span><span class="p">(),</span><span class="w"> </span><span class="n">Traits</span><span class="p">)</span><span class="w">    </span><span class="c1">// 发送原始初始化握手包 SetRawSend(true)</span>
+<span class="w">    </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">FPacketAudit</span><span class="o">::</span><span class="n">NotifyLowLevelSend</span><span class="p">((</span><span class="n">uint8</span><span class="o">*</span><span class="p">)</span><span class="n">DataToSend</span><span class="p">,</span><span class="w"> </span><span class="n">CountBytes</span><span class="p">,</span><span class="w"> </span><span class="n">CountBits</span><span class="p">)</span>
+<span class="w">    </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">CurSocket</span><span class="o">-&gt;</span><span class="n">SendTo</span><span class="p">(</span><span class="n">DataToSend</span><span class="p">,</span><span class="w"> </span><span class="n">CountBytes</span><span class="p">,</span><span class="w"> </span><span class="n">SendResult</span><span class="p">.</span><span class="n">BytesSent</span><span class="p">,</span><span class="w"> </span><span class="o">*</span><span class="n">RemoteAddr</span><span class="p">)</span><span class="w"> </span><span class="c1">// 直接向服务器地址IP地址发送 此处在发送之前，Client已经初始化了IpConnection，同时也保留了服务器地址(RemoteAddr)</span>
+</pre></div>
+</div>
+</section>
+<section id="connectionless">
+<h3>服务器发送给客户端Connectionless(无连接状态)的握手包<a class="headerlink" href="#connectionless" title="此标题的永久链接"></a></h3>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span>    UIpNetDriver::TickDispatch(deltaTime)
+        -&gt; UIpNetDriver::ProcessConnectionlessPacket
+        -&gt; ConnectionlessHandler-&gt;IncomingConnectionless(PacketRef);
+            // -&gt; StatelessConnectHandlerComponent::IncomingConnectionless(PacketRef)
+            -&gt; PacketHandler::Incoming
+            -&gt; PacketHandler::Incoming_Internal // 只是判断传入无连接的包是否正确有效
+                -&gt; 满足PacketView.Traits.bConnectionlessPacket == true条件
+            -&gt; StatelessConnectHandlerComponent::IncomingConnectionless(FIncomingPacketRef PacketRef) // 解析包
+            -&gt; StatelessConnectHandlerComponent::SendConnectChallenge(Address, TargetVersion, HandshakeData.RemoteSentHandshakePacketCount, ClientID); // 发送连接挑战，带上了ClientID、当前版本 构造服务器响应并将其发送到从服务器到客户端的初始连接数据包
+            -&gt; StatelessConnectHandlerComponent::GenerateCookie // 根据客户端地址和服务器时间戳，生成Cookie
+                -&gt; 为数据块生成HMAC（基于哈希的消息身份验证代码） // SHA1算法
+            -&gt; StatelessConnectHandlerComponent::CapHandshakePacket // 增加终止位1
+            -&gt; Driver::LowLevelSend(ClientAddress, ChallengePacket.GetData(), ChallengePacket.GetNumBits(), Traits) // 正式向客户端发送Challenge包，且是SetRawSend(true)下发送的，绕过了handler处理流程
+                -&gt; UIpNetDriver::LowLevelSend(TSharedPtr&lt;const FInternetAddr&gt; Address, void* Data, int32 CountBits, FOutPacketTraits&amp; Traits)
+                    -&gt; ConnectionlessHandler-&gt;OutgoingConnectionless // 在无UNetConnection的情况下处理传出数据包。Connectionless packets是不可靠的
+                    -&gt; PacketHandler::Outgoing_Internal // 前面的SetRawSend(true) 跳过的主要是此处的处理
+                        -&gt; GetSocket()-&gt;SendTo(DataToSend, FMath::DivideAndRoundUp(CountBits, 8), BytesSent, *Address) // 将CountBits对8进行除余后，正式发了出去
+                    
+</pre></div>
+</div>
+</section>
+<section id="connectchallenge-connectchallenge">
+<h3>客户端给服务器发<code class="docutils literal notranslate"><span class="pre">ConnectChallenge</span></code>的回复包。那么客户端在哪处理，如何处理来自服务器的<code class="docutils literal notranslate"><span class="pre">ConnectChallenge</span></code>包呢？<a class="headerlink" href="#connectchallenge-connectchallenge" title="此标题的永久链接"></a></h3>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="w">    </span><span class="n">UIpNetDriver</span><span class="o">::</span><span class="n">TickDispatch</span><span class="p">(</span><span class="kt">float</span><span class="p">)</span>
+<span class="w">        </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">Connection</span><span class="o">-&gt;</span><span class="n">ReceivedRawPacket</span><span class="w"> </span><span class="c1">// 接收原始包</span>
+<span class="w">        </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">PacketHandler</span><span class="o">::</span><span class="n">Incoming</span>
+<span class="w">        </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">PacketHandler</span><span class="o">::</span><span class="n">Incoming_Internal</span>
+<span class="w">            </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">不满足PacketView</span><span class="p">.</span><span class="n">Traits</span><span class="p">.</span><span class="n">bConnectionlessPacket</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">true条件</span>
+<span class="w">        </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">StatelessConnectHandlerComponent</span><span class="o">::</span><span class="n">Incoming</span><span class="p">(</span><span class="n">FBitReader</span><span class="o">&amp;</span><span class="w"> </span><span class="n">Packet</span><span class="p">)</span>
+<span class="w">        </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">StatelessConnectHandlerComponent</span><span class="o">::</span><span class="n">SendChallengeResponse</span><span class="p">(</span><span class="n">HandshakeData</span><span class="p">.</span><span class="n">RemoteCurVersion</span><span class="p">,</span><span class="w"> </span><span class="n">HandshakeData</span><span class="p">.</span><span class="n">SecretId</span><span class="p">,</span><span class="w"> </span><span class="n">HandshakeData</span><span class="p">.</span><span class="n">Timestamp</span><span class="p">,</span><span class="w"> </span><span class="n">HandshakeData</span><span class="p">.</span><span class="n">Cookie</span><span class="p">)</span><span class="w"> </span><span class="c1">// 发对Challenge的回复包给服务器，并且带上数据包原始里的Cookie和时间戳（服务器生成）</span>
+<span class="w">        </span><span class="c1">// 以下流程与Server流程一致</span>
+<span class="w">        </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">StatelessConnectHandlerComponent</span><span class="o">::</span><span class="n">CapHandshakePacket</span><span class="w"> </span><span class="c1">// 增加终止位1</span>
+<span class="w">            </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">UIpConnection</span><span class="o">::</span><span class="n">LowLevelSend</span><span class="p">(</span><span class="kt">void</span><span class="o">*</span><span class="w"> </span><span class="n">Data</span><span class="p">,</span><span class="w"> </span><span class="n">int32</span><span class="w"> </span><span class="n">CountBits</span><span class="p">,</span><span class="w"> </span><span class="n">FOutPacketTraits</span><span class="o">&amp;</span><span class="w"> </span><span class="n">Traits</span><span class="p">)</span><span class="w"> </span><span class="c1">// 向服务器发送回复包，且是SetRawSend(true)下发送的，绕过了handler处理流程</span>
+</pre></div>
+</div>
+<p>疑问：<code class="docutils literal notranslate"><span class="pre">Timestamp</span></code>是由服务器端生成的，此处传给客户端的，与客户端后续发回复包所带的<code class="docutils literal notranslate"><span class="pre">Timestamp</span></code>是否是一个内容？</p>
+</section>
+<section id="ack">
+<h3>服务器接收到来自客户端的回复包，给客户端发送<code class="docutils literal notranslate"><span class="pre">Ack</span></code>包<a class="headerlink" href="#ack" title="此标题的永久链接"></a></h3>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="n">UIpNetDriver</span><span class="o">::</span><span class="n">TickDispatch</span><span class="p">(</span><span class="kt">float</span><span class="w"> </span><span class="n">DeltaTime</span><span class="p">)</span>
+<span class="w">    </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">UIpNetDriver</span><span class="o">::</span><span class="n">ProcessConnectionlessPacket</span><span class="w"> </span><span class="c1">// 满足条件 Connection == nullptr, bAcceptingConnection 可以看出，直到此时，服务器都没有初始化Connection</span>
+<span class="w">        </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">PacketHandler</span><span class="o">::</span><span class="n">IncomingConnectionless</span><span class="w"> </span><span class="c1">// 设置 PacketView.Traits.bConnectionlessPacket = true</span>
+<span class="w">        </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">PacketHandler</span><span class="o">::</span><span class="n">Incoming_Internal</span>
+<span class="w">            </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">StatelessConnectHandlerComponent</span><span class="o">::</span><span class="n">IncomingConnectionless</span><span class="p">(</span><span class="n">FIncomingPacketRef</span><span class="w"> </span><span class="n">PacketRef</span><span class="p">)</span><span class="w"> </span><span class="c1">// 满足条件 PacketView.Traits.bConnectionlessPacket == true</span>
+<span class="w">            </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">GenerateCookie</span><span class="p">(</span><span class="n">Address</span><span class="p">,</span><span class="w"> </span><span class="n">HandshakeData</span><span class="p">.</span><span class="n">SecretId</span><span class="p">,</span><span class="w"> </span><span class="n">HandshakeData</span><span class="p">.</span><span class="n">Timestamp</span><span class="p">,</span><span class="w"> </span><span class="n">RegenCookie</span><span class="p">)</span><span class="w"> </span><span class="c1">// 不满足 bInitialConnect为true 条件，重新生成了一个Cookie</span>
+<span class="w">            </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">bChallengeSuccess</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">FMemory</span><span class="o">::</span><span class="n">Memcmp</span><span class="p">(</span><span class="n">HandshakeData</span><span class="p">.</span><span class="n">Cookie</span><span class="p">,</span><span class="w"> </span><span class="n">RegenCookie</span><span class="p">,</span><span class="w"> </span><span class="n">COOKIE_BYTE_SIZE</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="c1">// 对比从Client-&gt;Server数据包中的Cookie和此时在服务器端生成的Cookie，如果一致则向客户端发送Ack数据包</span>
+<span class="w">                </span><span class="o">-&gt;</span><span class="w"> </span><span class="n">StatelessConnectHandlerComponent</span><span class="o">::</span><span class="n">SendChallengeAck</span>
+</pre></div>
+</div>
+<p>至此，服务器确认接收到了来自客户端的回复包，发送给客户端Ack包后，此时是真正确认了客户端与服务器之间的连接状态。</p>
+</section>
+</section>
+<section id="id3">
+<h2>深入一些细节探讨<a class="headerlink" href="#id3" title="此标题的永久链接"></a></h2>
+<section id="connection-packethandler-ipnetdriver">
+<h3>Connection PacketHandler IpNetDriver在连接过程中是如何参与的？<a class="headerlink" href="#connection-packethandler-ipnetdriver" title="此标题的永久链接"></a></h3>
+<p>只要数据有效且，最后一位字节为1，则传入无连接的包是成功的。</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">HandlerComponents</span><span class="p">.</span><span class="n">Num</span><span class="p">()</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="k">const</span><span class="w"> </span><span class="n">uint8</span><span class="o">*</span><span class="w"> </span><span class="n">DataPtr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">DataView</span><span class="p">.</span><span class="n">GetData</span><span class="p">();</span>
+<span class="w">        </span><span class="c1">// 取最后一位</span>
+<span class="w">        </span><span class="n">uint8</span><span class="w"> </span><span class="n">LastByte</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">UNLIKELY</span><span class="p">(</span><span class="n">DataPtr</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="k">nullptr</span><span class="p">))</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">DataPtr</span><span class="p">[</span><span class="n">DataView</span><span class="p">.</span><span class="n">NumBytes</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">];</span>
+
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">LastByte</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">            </span><span class="n">CountBits</span><span class="o">--</span><span class="p">;</span>
+
+<span class="w">            </span><span class="c1">// 若LastByte一开始为1，最终会为128，相当于把原字节后八位给舍弃了</span>
+<span class="w">            </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="p">(</span><span class="n">LastByte</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="mh">0x80</span><span class="p">))</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">                </span><span class="n">LastByte</span><span class="w"> </span><span class="o">*=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+<span class="w">                </span><span class="n">CountBits</span><span class="o">--</span><span class="p">;</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">        </span><span class="k">else</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">            </span><span class="n">PacketView</span><span class="p">.</span><span class="n">DataView</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="k">nullptr</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">ECountUnits</span><span class="o">::</span><span class="n">Bits</span><span class="p">};</span>
+<span class="w">            </span><span class="n">ReturnVal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">EIncomingResult</span><span class="o">::</span><span class="n">Error</span><span class="p">;</span>
+
+<span class="cp">#if !UE_BUILD_SHIPPING</span>
+<span class="w">            </span><span class="n">UE_CLOG</span><span class="p">((</span><span class="n">DDoS</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="k">nullptr</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="n">DDoS</span><span class="o">-&gt;</span><span class="n">CheckLogRestrictions</span><span class="p">()),</span><span class="w"> </span><span class="n">PacketHandlerLog</span><span class="p">,</span><span class="w"> </span><span class="n">Error</span><span class="p">,</span>
+<span class="w">                </span><span class="n">TEXT</span><span class="p">(</span><span class="s">&quot;PacketHandler parsing packet with zero&#39;s in last byte.&quot;</span><span class="p">));</span>
+<span class="cp">#endif</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">StatelessConnectHandlerComponent::IncomingConnectionless</span></code>解析包体内容，拆分有<code class="docutils literal notranslate"><span class="pre">SessionID</span></code>、<code class="docutils literal notranslate"><span class="pre">ClientID</span></code></p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">CurrentHandshakeVersion</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="n">uint8</span><span class="o">&gt;</span><span class="p">(</span><span class="n">EHandshakeVersion</span><span class="o">::</span><span class="n">SessionClientId</span><span class="p">))</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="n">Packet</span><span class="p">.</span><span class="n">SerializeBits</span><span class="p">(</span><span class="o">&amp;</span><span class="n">SessionID</span><span class="p">,</span><span class="w"> </span><span class="n">SessionIDSizeBits</span><span class="p">);</span>
+<span class="w">        </span><span class="n">Packet</span><span class="p">.</span><span class="n">SerializeBits</span><span class="p">(</span><span class="o">&amp;</span><span class="n">ClientID</span><span class="p">,</span><span class="w"> </span><span class="n">ClientIDSizeBits</span><span class="p">);</span>
+
+<span class="w">        </span><span class="n">bHasValidSessionID</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">GVerifyNetSessionID</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="p">(</span><span class="n">SessionID</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">CachedGlobalNetTravelCount</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">!</span><span class="n">Packet</span><span class="p">.</span><span class="n">IsError</span><span class="p">());</span>
+
+<span class="w">        </span><span class="c1">// No ClientID validation until connected</span>
+<span class="w">    </span><span class="p">}</span>
+</pre></div>
+</div>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">StatelessConnectHandlerComponent::SendConnectChallenge</span><span class="p">(</span><span class="n">TSharedPtr</span><span class="o">&lt;</span><span class="k">const</span><span class="w"> </span><span class="n">FInternetAddr</span><span class="o">&gt;</span><span class="w"> </span><span class="n">ClientAddress</span><span class="p">,</span><span class="w"> </span><span class="n">EHandshakeVersion</span><span class="w"> </span><span class="n">HandshakeVersion</span><span class="p">,</span><span class="w"> </span><span class="n">uint8</span><span class="w"> </span><span class="n">ClientSentHandshakePacketCount</span><span class="p">,</span><span class="w"> </span><span class="n">uint32</span><span class="w"> </span><span class="n">InClientID</span><span class="p">)</span>
+<span class="w">    </span><span class="c1">// ......</span>
+<span class="w">    </span><span class="n">ChallengePacket</span><span class="p">.</span><span class="n">WriteBit</span><span class="p">(</span><span class="n">bHandshakePacket</span><span class="p">);</span>
+<span class="w">    </span><span class="n">ChallengePacket</span><span class="p">.</span><span class="n">WriteBit</span><span class="p">(</span><span class="n">bRestartHandshake</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">// ......</span>
+</pre></div>
+</div>
+</section>
+<section id="handshakesecret">
+<h3>HandshakeSecret<a class="headerlink" href="#handshakesecret" title="此标题的永久链接"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">HandshakeSecret</span></code>是一个仅用于握手连接过程的秘钥，仅存于服务器，是一个对客户端透明的值。此外，<code class="docutils literal notranslate"><span class="pre">HandshakeSecret</span></code>每$15+Rand(0,5)$秒会更新一次(可见<code class="docutils literal notranslate"><span class="pre">StatelessConnectHandlerComponent::UpdateSecret</span></code>)（以前的值被存储相同的时间），为了限制数据包重放攻击，Cookie可以重复运用
+定义如下：</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#define SECRET_COUNT 2</span>
+<span class="n">TArray</span><span class="o">&lt;</span><span class="n">uint8</span><span class="o">&gt;</span><span class="w"> </span><span class="n">HandshakeSecret</span><span class="p">[</span><span class="n">SECRET_COUNT</span><span class="p">];</span>
+</pre></div>
+</div>
+<p>更新的逻辑：</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#define SECRET_UPDATE_TIME          15.f</span>
+<span class="cp">#define SECRET_UPDATE_TIME_VARIANCE 5.f</span>
+<span class="c1">// void StatelessConnectHandlerComponent::Tick(float DeltaTime)</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(((</span><span class="n">Driver</span><span class="o">-&gt;</span><span class="n">GetElapsedTime</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">LastSecretUpdateTimestamp</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="p">(</span><span class="n">SECRET_UPDATE_TIME</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">CurVariance</span><span class="p">))</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mf">0.0</span><span class="p">)</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="n">CurVariance</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">FMath</span><span class="o">::</span><span class="n">FRandRange</span><span class="p">(</span><span class="mf">0.f</span><span class="p">,</span><span class="w"> </span><span class="n">SECRET_UPDATE_TIME_VARIANCE</span><span class="p">);</span>
+
+<span class="w">        </span><span class="n">UpdateSecret</span><span class="p">();</span>
+<span class="w">    </span><span class="p">}</span>
+</pre></div>
+</div>
+<p>每次调用<code class="docutils literal notranslate"><span class="pre">UpdateSecret</span></code>时，服务器两个<code class="docutils literal notranslate"><span class="pre">HandshakeSecret</span></code>会交替进行更新，例如上次更新了索引为0的Secret，下次<code class="docutils literal notranslate"><span class="pre">UpdateSecret</span></code>则更新索引为1的Secret。更新的值为64位字节值，每位字节都为0或1的随机值。</p>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="c1">// void StatelessConnectHandlerComponent::UpdateSecret()</span>
+<span class="w">    </span><span class="n">TArray</span><span class="o">&lt;</span><span class="n">uint8</span><span class="o">&gt;&amp;</span><span class="w"> </span><span class="n">CurArray</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">HandshakeSecret</span><span class="p">[</span><span class="n">ActiveSecret</span><span class="p">];</span>
+
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">int32</span><span class="w"> </span><span class="n">i</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">&lt;</span><span class="n">SECRET_BYTE_SIZE</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="n">CurArray</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">FMath</span><span class="o">::</span><span class="n">Rand</span><span class="p">()</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">255</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="cookie">
+<h3>Cookie<a class="headerlink" href="#cookie" title="此标题的永久链接"></a></h3>
+<section id="id4">
+<h4>为什么我们需要它？<a class="headerlink" href="#id4" title="此标题的永久链接"></a></h4>
+<p>为了验证</p>
+</section>
+<section id="id5">
+<h4>如何生成<a class="headerlink" href="#id5" title="此标题的永久链接"></a></h4>
+<p>UE内部使用了HMAC算法，仔细看函数内部，发现用了著名的SHA1哈希算法，将<code class="docutils literal notranslate"><span class="pre">HandshakeSecret</span></code>这个只有服务器知道的秘密值，与要相连客户端的特有信息（IP地址、端口号）和服务器时间戳一起生成一个Cookie值</p>
+<p>$$
+Cookie = HMAC(HandshakeSecret, Timestamp_{Server} + IP_{Client} + Port_{Client})
+$$</p>
+<p>服务器给客户端发<code class="docutils literal notranslate"><span class="pre">Handshake</span> <span class="pre">Challge</span></code>，等到客户端<code class="docutils literal notranslate"><span class="pre">Responds</span> <span class="pre">Handshake</span> <span class="pre">Challge</span></code>的时候，客户端会将<code class="docutils literal notranslate"><span class="pre">时间戳</span></code>和<code class="docutils literal notranslate"><span class="pre">Cookie</span></code>带到<code class="docutils literal notranslate"><span class="pre">Responed</span></code>中。服务器拿到客户端的剩余其他信息，将重新生成一次Cookie，并且跟客户端回发的Cookie进行相验证。</p>
+<p>TODO:后续再看下<code class="docutils literal notranslate"><span class="pre">SHA1</span></code>的哈希算法，<code class="docutils literal notranslate"><span class="pre">void</span> <span class="pre">FSHA1::HMACBuffer(const</span> <span class="pre">void*</span> <span class="pre">Key,</span> <span class="pre">uint32</span> <span class="pre">KeySize,</span> <span class="pre">const</span> <span class="pre">void*</span> <span class="pre">Data,</span> <span class="pre">uint64</span> <span class="pre">DataSize,</span> <span class="pre">uint8*</span> <span class="pre">OutHash)</span></code></p>
+<p>再顺便看下<code class="docutils literal notranslate"><span class="pre">BitWriter::WriteBit</span></code>和<code class="docutils literal notranslate"><span class="pre">BitWriter::SerializeBits</span></code></p>
+<p><code class="docutils literal notranslate"><span class="pre">FMath::DivideAndRoundUp</span></code>是什么</p>
+</section>
+</section>
 </section>
 </section>
 
