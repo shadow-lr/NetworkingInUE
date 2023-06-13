@@ -1,1 +1,15 @@
 # 4.2 UE5 WebSocket网络通信
+
+#### WebSocketNetDriver
+```cpp
+UWebSocketNetDriver::InitListen(FNetworkNotify* InNotify, FURL& LocalURL, bool bReuseAddressAndPort, FString& Error)
+    -> UWebSocketNetDriver::InitBase
+        -> (UNetDriver)Super::InitBase
+    -> UNetDriver::InitConnectionlessHandler
+    -> WebSocketServer = new class FWebSocketServer();
+        WebSocketServer->Init(WebSocketPort, CallBack)  初始化WebSocket服务器的信息
+        WebSocketServer->Tick()
+            ->  lws_service(Context, 0);    // libwebsockets.h
+            ->  lws_callback_on_writable_all_protocol(Context, &Protocols[0]);
+    -> ServerConnection = NULL
+```

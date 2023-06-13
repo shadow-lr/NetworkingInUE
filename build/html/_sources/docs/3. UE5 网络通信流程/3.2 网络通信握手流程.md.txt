@@ -1,0 +1,207 @@
+# 3.2 UE5 网络通信握手流程
+#### 浅析一下握手（建立连接）过程
+
+如何处理客户端的连接？以服务器视角下，客户端与服务器的连接关系可能是多对一的，则势必需要一个数据结构维系与每个客户端的Connection。
+`NetDriver.h`头文件中定义了`FConnectionMap`，其用地址映射到Connection。
+```cpp
+using FConnectionMap = TMap<TSharedRef<const FInternetAddr>, UNetConnection*, FDefaultSetAllocator, FInternetAddrConstKeyMapFuncs<UNetConnection*>>;
+```
+```
+    /**
+     * Map of IP's to NetConnection's - for fast lookup, particularly under DDoS.
+     * Only valid IP's mapped (e.g. excludes DemoNetConnection). Recently disconnected clients remain mapped as nullptr connections.
+     */
+    FConnectionMap MappedClientConnections;
+```
+而该存储映射关系的数据结构，重点需要关注的有以下两处更新入口。
+- `UIpNetDriver::ProcessConnectionlessPacket`
+- `USteamSocketsNetDriver::OnConnectionCreated`
+
+以下按**时间顺序**列举每个过程：
+
+todo:每个过程处理的目的和方式
+
+##### 客户端向服务器发送初始握手包
+上一节我们讲到，客户端和服务器都会初始化一个`NetDriver`，其作为网络通信的驱动层，后续会经常看到这个的身影，`StatelessConnectHandlerComponent::Tick`中发现`StatelessConnectHandlerComponent`状态为`UnInitialized`，于是发送初始握手包（`InitialPacket`）给服务器
+```cpp
+    -> UPendingNetGame::Tick
+    -> UNetDriver::TickFlush
+    -> UNetConnection::Tick
+    -> PacketHandler::Tick
+        -> StatelessConnectHandlerComponent::Tick
+        -> StatelessConnectHandlerComponent::SendInitialPacket // 满足条件 Handler->Mode == Handler::Mode::Client
+        -> ServerConn->LowLevelSend(InitialPacket.GetData(), InitialPacket.GetNumBits(), Traits)    // 发送原始初始化握手包 SetRawSend(true)
+            -> FPacketAudit::NotifyLowLevelSend((uint8*)DataToSend, CountBytes, CountBits)
+            -> CurSocket->SendTo(DataToSend, CountBytes, SendResult.BytesSent, *RemoteAddr) // 直接向服务器地址IP地址发送 此处在发送之前，Client已经初始化了IpConnection，同时也保留了服务器地址(RemoteAddr)
+
+```
+##### 服务器发送给客户端Connectionless(无连接状态)的握手包
+- 服务器上的`NetDriver::TickDispatch`，在`for (FPacketIterator It(this); It; ++It)`中调用了`UIpNetDriver::ReceiveSinglePacket`，然后在函数内部又调用了`Driver->GetSocket()->RecvFrom -> FSocketBSD::RecvFrom`，接收到了来自客户端的初始握手包信息。
+- 在经过一些校验和判断条件确定握手包正确有效后，`Server->Client`发送`ConnectChallenge`包，在构造`ConnectChallenge`包的过程中，服务器会生成特定的校验信息`Cookie`并加在包中，该`Cookie`后续握手过程中还会再用到，标个重点。
+
+```cpp
+    UIpNetDriver::TickDispatch(deltaTime)
+        -> UIpNetDriver::GetCurrentPacket
+        -> UIpNetDriver::ReceiveSinglePacket
+        -> UIpNetDriver::ProcessConnectionlessPacket
+        -> ConnectionlessHandler->IncomingConnectionless(PacketRef);
+            // -> StatelessConnectHandlerComponent::IncomingConnectionless(PacketRef)
+            -> PacketHandler::Incoming
+            -> PacketHandler::Incoming_Internal // 只是判断传入无连接的包是否正确有效
+                -> 满足PacketView.Traits.bConnectionlessPacket == true条件
+            -> StatelessConnectHandlerComponent::IncomingConnectionless(FIncomingPacketRef PacketRef) // 解析包
+            -> StatelessConnectHandlerComponent::SendConnectChallenge(Address, TargetVersion, HandshakeData.RemoteSentHandshakePacketCount, ClientID); // 发送连接挑战，带上了ClientID、当前版本 构造服务器响应并将其发送到从服务器到客户端的初始连接数据包
+            -> StatelessConnectHandlerComponent::GenerateCookie // 根据客户端地址和服务器时间戳，生成Cookie
+                -> 为数据块生成HMAC（基于哈希的消息身份验证代码） // SHA1算法
+            -> StatelessConnectHandlerComponent::CapHandshakePacket // 增加终止位1
+            -> Driver::LowLevelSend(ClientAddress, ChallengePacket.GetData(), ChallengePacket.GetNumBits(), Traits) // 正式向客户端发送Challenge包，且是SetRawSend(true)下发送的，绕过了handler处理流程
+                -> UIpNetDriver::LowLevelSend(TSharedPtr<const FInternetAddr> Address, void* Data, int32 CountBits, FOutPacketTraits& Traits)
+                    -> ConnectionlessHandler->OutgoingConnectionless // 在无UNetConnection的情况下处理传出数据包。Connectionless packets是不可靠的
+                    -> PacketHandler::Outgoing_Internal // 前面的SetRawSend(true) 跳过的主要是此处的处理
+                        -> GetSocket()->SendTo(DataToSend, FMath::DivideAndRoundUp(CountBits, 8), BytesSent, *Address) // 将CountBits对8进行除余后，正式发了出去
+                    
+
+```
+##### 客户端给服务器发`ConnectChallenge`的回复包。那么客户端在哪处理，如何处理来自服务器的`ConnectChallenge`包呢？
+- todo
+
+```cpp
+    UIpNetDriver::TickDispatch(float)
+        -> Connection->ReceivedRawPacket // 接收原始包
+        -> PacketHandler::Incoming
+        -> PacketHandler::Incoming_Internal
+            -> 不满足PacketView.Traits.bConnectionlessPacket == true条件
+        -> StatelessConnectHandlerComponent::Incoming(FBitReader& Packet)
+        -> StatelessConnectHandlerComponent::SendChallengeResponse(HandshakeData.RemoteCurVersion, HandshakeData.SecretId, HandshakeData.Timestamp, HandshakeData.Cookie) // 发对Challenge的回复包给服务器，并且带上数据包原始里的Cookie和时间戳（服务器生成）
+        // 以下流程与Server流程一致
+        -> StatelessConnectHandlerComponent::CapHandshakePacket // 增加终止位1
+            -> UIpConnection::LowLevelSend(void* Data, int32 CountBits, FOutPacketTraits& Traits) // 向服务器发送回复包，且是SetRawSend(true)下发送的，绕过了handler处理流程
+
+
+```
+
+疑问：`Timestamp`是由服务器端生成的，此处传给客户端的，与客户端后续发回复包所带的`Timestamp`是否是一个内容？
+
+##### 服务器接收到来自客户端的回复包，给客户端发送`Ack`包
+```cpp
+void UIpNetDriver::TickDispatch(float DeltaTime)
+    -> UIpNetDriver::ProcessConnectionlessPacket // 满足条件 Connection == nullptr, bAcceptingConnection 可以看出，直到此时，服务器都没有初始化Connection
+        -> PacketHandler::IncomingConnectionless // 设置 PacketView.Traits.bConnectionlessPacket = true
+        -> PacketHandler::Incoming_Internal
+            -> StatelessConnectHandlerComponent::IncomingConnectionless(FIncomingPacketRef PacketRef) // 满足条件 PacketView.Traits.bConnectionlessPacket == true
+            -> GenerateCookie(Address, HandshakeData.SecretId, HandshakeData.Timestamp, RegenCookie) // 不满足 bInitialConnect为true 条件，重新生成了一个Cookie
+            -> bChallengeSuccess = FMemory::Memcmp(HandshakeData.Cookie, RegenCookie, COOKIE_BYTE_SIZE) == 0 // 对比从Client->Server数据包中的Cookie和此时在服务器端生成的Cookie，如果一致则向客户端发送Ack数据包
+                -> StatelessConnectHandlerComponent::SendChallengeAck
+```
+至此，服务器确认接收到了来自客户端的回复包，发送给客户端Ack包后，此时是真正确认了客户端与服务器之间的连接状态。
+
+### 深入一些细节探讨
+#### Connection PacketHandler IpNetDriver在连接过程中是如何参与的？
+
+
+只要数据有效且，最后一位字节为1，则传入无连接的包是成功的。
+```cpp
+    if (HandlerComponents.Num() > 0)
+    {
+        const uint8* DataPtr = DataView.GetData();
+        // 取最后一位
+        uint8 LastByte = (UNLIKELY(DataPtr == nullptr)) ? 0 : DataPtr[DataView.NumBytes() - 1];
+
+        if (LastByte != 0)
+        {
+            CountBits--;
+
+            // 若LastByte一开始为1，最终会为128，相当于把原字节后八位给舍弃了
+            while (!(LastByte & 0x80))
+            {
+                LastByte *= 2;
+                CountBits--;
+            }
+        }
+        else
+        {
+            PacketView.DataView = {nullptr, 0, ECountUnits::Bits};
+            ReturnVal = EIncomingResult::Error;
+
+#if !UE_BUILD_SHIPPING
+            UE_CLOG((DDoS == nullptr || !DDoS->CheckLogRestrictions()), PacketHandlerLog, Error,
+                TEXT("PacketHandler parsing packet with zero's in last byte."));
+#endif
+        }
+    }
+```
+
+`StatelessConnectHandlerComponent::IncomingConnectionless`解析包体内容，拆分有`SessionID`、`ClientID`
+```cpp
+    if (CurrentHandshakeVersion >= static_cast<uint8>(EHandshakeVersion::SessionClientId))
+    {
+        Packet.SerializeBits(&SessionID, SessionIDSizeBits);
+        Packet.SerializeBits(&ClientID, ClientIDSizeBits);
+
+        bHasValidSessionID = GVerifyNetSessionID == 0 || (SessionID == CachedGlobalNetTravelCount && !Packet.IsError());
+
+        // No ClientID validation until connected
+    }
+```
+
+```cpp
+void StatelessConnectHandlerComponent::SendConnectChallenge(TSharedPtr<const FInternetAddr> ClientAddress, EHandshakeVersion HandshakeVersion, uint8 ClientSentHandshakePacketCount, uint32 InClientID)
+    // ......
+    ChallengePacket.WriteBit(bHandshakePacket);
+    ChallengePacket.WriteBit(bRestartHandshake);
+    // ......
+```
+
+#### StatelessConnectHandlerComponent在握手连接建立后是否还存在？
+为什么我会有这个疑问呢？`StatelessConnectHandlerComponent::Tick`函数内部的代码量其实很少，做的事情也比较明确，作为`Client`，只需要根据判断条件，做发送初始握手包和回复服务器发送的`Challenge`包两件事，而这两件事，在握手连接建立后，理应不用在`Tick`中每帧判断去做，带着这个疑问，我们看看其的生命周期
+
+#### HandshakeSecret
+`HandshakeSecret`是一个仅用于握手连接过程的秘钥，仅存于服务器，是一个对客户端透明的值。此外，`HandshakeSecret`每$15+Rand(0,5)$秒会更新一次(可见`StatelessConnectHandlerComponent::UpdateSecret`)（以前的值被存储相同的时间），为了限制数据包重放攻击，Cookie可以重复运用
+定义如下：
+```cpp
+#define SECRET_COUNT 2
+TArray<uint8> HandshakeSecret[SECRET_COUNT];
+```
+更新的逻辑：
+```cpp
+#define SECRET_UPDATE_TIME          15.f
+#define SECRET_UPDATE_TIME_VARIANCE 5.f
+// void StatelessConnectHandlerComponent::Tick(float DeltaTime)
+    if (((Driver->GetElapsedTime() - LastSecretUpdateTimestamp) - (SECRET_UPDATE_TIME + CurVariance)) > 0.0)
+    {
+        CurVariance = FMath::FRandRange(0.f, SECRET_UPDATE_TIME_VARIANCE);
+
+        UpdateSecret();
+    }
+```
+每次调用`UpdateSecret`时，服务器两个`HandshakeSecret`会交替进行更新，例如上次更新了索引为0的Secret，下次`UpdateSecret`则更新索引为1的Secret。更新的值为64位字节值，每位字节都为0或1的随机值。
+
+```cpp
+// void StatelessConnectHandlerComponent::UpdateSecret()
+    TArray<uint8>& CurArray = HandshakeSecret[ActiveSecret];
+
+    for (int32 i=0; i<SECRET_BYTE_SIZE; i++)
+    {
+        CurArray[i] = FMath::Rand() % 255;
+    }
+```
+
+#### Cookie
+##### 为什么我们需要它？
+为了验证
+##### 如何生成
+UE内部使用了HMAC算法，仔细看函数内部，发现用了著名的SHA1哈希算法，将`HandshakeSecret`这个只有服务器知道的秘密值，与要相连客户端的特有信息（IP地址、端口号）和服务器时间戳一起生成一个Cookie值
+
+$$
+    Cookie = HMAC(HandshakeSecret, Timestamp_{Server} + IP_{Client} + Port_{Client})
+$$
+
+服务器给客户端发`Handshake Challge`，等到客户端`Responds Handshake Challge`的时候，客户端会将`时间戳`和`Cookie`带到`Responed`中。服务器拿到客户端的剩余其他信息，将重新生成一次Cookie，并且跟客户端回发的Cookie进行相验证。
+
+TODO:后续再看下`SHA1`的哈希算法，`void FSHA1::HMACBuffer(const void* Key, uint32 KeySize, const void* Data, uint64 DataSize, uint8* OutHash)`
+
+
+再顺便看下`BitWriter::WriteBit`和`BitWriter::SerializeBits`
+
+`FMath::DivideAndRoundUp`是什么
+

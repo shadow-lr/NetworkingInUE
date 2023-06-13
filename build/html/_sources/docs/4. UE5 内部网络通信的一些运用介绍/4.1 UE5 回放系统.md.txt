@@ -1,1 +1,25 @@
 # 4.1 UE5 回放系统
+
+#### UDemoNetDriver
+```cpp
+UDemoNetDriver::InitListen(FNetworkNotify* InNotify, FURL& ListenURL, bool bReuseAddressAndPort, FString& Error)
+    -> UDemoNetDriver::InitBase(false, InNotify, ListenURL, bReuseAddressAndPort, Error)
+        -> (UNetDriver)Super::InitBase(bInitAsClient, InNotify, URL, bReuseAddressAndPort, Error) 服务器和客户端连接设置之间的通用初始化(超时时间、DDos初始化等)
+        -> UDemoNetDriver::ResetDemoState() 初始化回放系统的状态
+    ->  UDemoNetConnection* Connection = NewObject<UDemoNetConnection>();
+	    Connection->InitConnection(this, USOCK_Open, ListenURL, 1000000); 在服务器上创建一个连接，把他当作客户端，放进ClientConnections中
+    ->  StartRecording()
+    ->  SpawnDemoRecSpectator(Connection, ListenURL);
+```
+
+#### UDemoNetDriver::InitConnect
+```cpp
+bool UDemoNetDriver::InitConnect(FNetworkNotify* InNotify, const FURL& ConnectURL, FString& Error)
+    -> UDemoNetDriver::InitBase(true, InNotify, ConnectURL, false, Error)
+        -> UIpNetDriver::InitBase(true, InNotify, ConnectURL, false, Error)
+        -> ResetDemoState()初始化回放系统状态
+        -> ReplayHelper.Init(URL) 解析URL
+    -> ServerConnection = NewObject<UNetConnection>(GetTransientPackage(), UDemoNetConnection::StaticClass()); 	// Playback, local machine is a client, and the demo stream acts "as if" it's the server.
+	    ServerConnection->InitConnection(this, USOCK_Pending, ConnectURL, 1000000);
+    -> GetReplayStreamer()->StartStreaming(Params, FStartStreamingCallback::CreateUObject(this, &UDemoNetDriver::ReplayStreamingReady)); // todo: 尚不知道此处作用
+```
